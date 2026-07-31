@@ -1,52 +1,70 @@
-# Password Generator
+# password-generator
 
-A cryptographically secure password generator.
-
-## How
-
-1. **Charset construction**: builds a character set from the enabled classes (lowercase, uppercase, digits, symbols). `--exclude-ambiguous` strips visually confusable characters (`I`, `l`, `1`, `O`, `0`, etc.).
-2. **Length from entropy**: computes `bits_per_char = log2(charset_size)`, then `length = ceil(target_entropy / bits_per_char)`. Default target: 256 bits.
-3. **Character selection**: each character is drawn independently via `secrets.choice()`, Python's CSPRNG (backed by `os.urandom`). No pattern, no reuse of prior output, uniform over the charset.
-4. **Post-quantum margin**: displays `entropy / 2`, since Grover's algorithm gives a quadratic speedup on brute-force search, halving effective security bits.
-5. **Clipboard mode** (`--clipboard`): copies the password via `pyperclip` instead of printing it. `--clear-after N` wipes the clipboard after N seconds, but only if it still holds the password you generated (won't clobber something else you copied since).
+Cryptographically secure password generator.
 
 ## Why
 
-Passwords generated today can end up stored or intercepted for years, so they need to hold up against attacks that don't exist yet, not just the ones that do. Grover's algorithm halves effective key strength on a quantum computer, so the default entropy target is set to 256 bits. That leaves 128 bits post-quantum, out of reach of any brute-force attack, classical or quantum, for the foreseeable future.
+Weak or reused passwords are still one of the most common ways accounts get broken into. This tool generates passwords with real, measurable cryptographic strength — using the OS's secure random source instead of a predictable PRNG, strong enough to resist both classical brute-force and quantum-assisted attacks — as a local CLI with no browser, no extension, and no third-party service involved.
+
+## How it works
+
+1. Build a character pool from the enabled categories (lowercase, uppercase, digits, symbols), optionally stripping visually-ambiguous or shell-hostile characters (`il1LoO0` and friends).
+2. Pick one character from each enabled category first, so the result satisfies typical "must contain a symbol" policies.
+3. Fill the remaining length with `secrets.choice()` picks from the full pool — `secrets` draws from the OS's cryptographically secure random source, unlike `random`, which is a statistical PRNG predictable to an attacker who can model its internal state.
+4. Fisher-Yates shuffle the result using `secrets.randbelow()` — not `random.shuffle()` — so the guaranteed characters aren't clustered at the front.
+5. Optionally copy the result to the clipboard instead of printing it, then hand a copy to a detached background process over stdin (never argv, since argv is visible via `ps`) that clears the clipboard after a timeout — but only if the clipboard still contains what was set, so it won't clobber something else you copy in the meantime.
+6. Entropy can be sized against quantum brute-force, not just classical: Grover's algorithm only gives a quadratic (not exponential) speedup against brute-force search, so doubling the entropy budget compensates for it — 256 bits of entropy preserves ~128 bits of effective security even against that speedup, the same margin AES-256 relies on for quantum resistance.
 
 ## Usage
+
 ```
-usage: main.py [-h] [-l LENGTH] [-e ENTROPY] [-n COUNT] [--no-lower] [--no-upper] [--no-digits] [--no-symbols] [--exclude-ambiguous] [--quiet] [--clipboard]
-               [--clear-after SECONDS]
+usage: password-generator [-h] [-l LENGTH] [-n COUNT] [--no-lower]
+                          [--no-upper] [--no-digits] [--no-symbols]
+                          [--exclude-ambiguous] [--no-guarantee] [--paranoid]
+                          [--show-entropy] [-c]
+                          [--clipboard-timeout CLIPBOARD_TIMEOUT]
+
+Generate cryptographically secure passwords using the OS CSPRNG.
 
 options:
   -h, --help            show this help message and exit
-  -l, --length LENGTH   explicit length, overrides --entropy
-  -e, --entropy ENTROPY
-                        target entropy in bits (default: 256)
-  -n, --count COUNT     number of passwords to generate
+  -l LENGTH, --length LENGTH
+  -n COUNT, --count COUNT
   --no-lower
   --no-upper
   --no-digits
   --no-symbols
-  --exclude-ambiguous   drop chars like I, l, 1, O, 0
-  --quiet               print only the password(s)
-  --clipboard           copy to clipboard instead of printing it
-  --clear-after SECONDS
-                        auto-clear clipboard after N seconds
+  --exclude-ambiguous
+  --no-guarantee        don't force at least one char from each enabled
+                        category
+  --paranoid            auto-set length so entropy >= 256 bits
+  --show-entropy
+  -c, --clipboard       copy the password to the clipboard instead of printing
+                        it
+  --clipboard-timeout CLIPBOARD_TIMEOUT
+                        seconds before the clipboard is auto-cleared, 0 to
+                        disable (default 20)
+```
+
+### Examples
+
+```bash
+password-generator                             # 32-char password, all categories
+password-generator -l 64 -n 5                  # five 64-char passwords
+password-generator --paranoid --show-entropy   # auto-length for >=256 bits, print entropy
+password-generator --exclude-ambiguous         # drop chars like l/1/I/O/0
+password-generator -c                          # copy to clipboard, clear after 20s
+password-generator -c --clipboard-timeout 0    # copy, never auto-clear
 ```
 
 ## Installation
 
-Prerequisites: Python 3.9+.
+Requirements: Python 3.10+, [`uv`](https://docs.astral.sh/uv/), and, if on Linux, `xclip` or `xsel` (for clipboard support).
 
 ```bash
-git clone https://github.com/p4p2r0/password-generator.git
-cd password-generator
-pip install -r requirements.txt
-python main.py
+uv tool install git+https://github.com/p4p2r0/password-generator
 ```
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE)
