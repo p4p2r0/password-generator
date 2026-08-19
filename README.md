@@ -1,6 +1,6 @@
 # password-generator
 
-Cryptographically secure password generator.
+Cryptographically secure password generator
 
 ## Why
 
